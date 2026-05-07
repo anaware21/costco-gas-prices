@@ -25,7 +25,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-firefox-${{ runner.os }}
+          key: playwright-firefox-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
 
       - name: Install Firefox
         if: steps.playwright-cache.outputs.cache-hit != 'true'
