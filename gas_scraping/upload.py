@@ -12,52 +12,44 @@ SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 
 URLS = [
-    # SoCal
-    "https://www.costco.com/w/-/ca/alhambra/428",
-    "https://www.costco.com/w/-/ca/inglewood/769",
-    "https://www.costco.com/w/-/ca/marina-del-rey/479",
     # "https://www.costco.com/w/-/ca/burbank/677",
     # "https://www.costco.com/w/-/ca/monterey-park/1318",
-
-    # North Jersey
     # "https://www.costco.com/w/-/nj/east-hanover/244",
+    # "https://www.costco.com/w/-/nj/union/320",
+    # "https://www.costco.com/w/-/tx/plano/664",
+    # "https://www.costco.com/w/-/tx/arlington/668",
+    # "https://www.costco.com/w/-/ca/marina-del-rey/479",
+    # "https://www.costco.com/w/-/nj/edison/323",
+    # "https://www.costco.com/w/-/tx/mckinney/1284"
+    "https://www.costco.com/w/-/ca/alhambra/428",
+    "https://www.costco.com/w/-/ca/inglewood/769",
     "https://www.costco.com/w/-/nj/wharton/315",
     "https://www.costco.com/w/-/nj/wayne/1177",
-    "https://www.costco.com/w/-/nj/edison/323",
-    # "https://www.costco.com/w/-/nj/union/320",
-
-    # DFW
     "https://www.costco.com/w/-/tx/dallas/1266",
-    "https://www.costco.com/w/-/tx/frisco/1097",
-    "https://www.costco.com/w/-/tx/mckinney/1284"
-    # ,
-    # "https://www.costco.com/w/-/tx/plano/664",
-    # "https://www.costco.com/w/-/tx/arlington/668"
+    "https://www.costco.com/w/-/tx/frisco/1097"
 ]
 
 
 def scrape_all(urls):
-    html_pages = fetch_html(urls)
+    results, failed = fetch_html(urls)
+    for url in failed:
+        print(f"WARNING: permanently failed to fetch {url}")
     regular_rows = []
     premium_rows = []
-    for url, html in zip(urls, html_pages):
+    for url in urls:
+        html = results.get(url)
         base = {
             "date": datetime.now(ZoneInfo("America/New_York")).date().isoformat(),
             "url": url,
             "location": url.split("/")[-2],
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
-        if isinstance(html, Exception):
-            print(f"WARNING: failed to fetch {url}: {html}")
-            regular_rows.append({**base, "price": None})
-            premium_rows.append({**base, "price": None})
-        else:
-            regular_rows.append({**base, "price": get_regular_price(html)})
-            premium_rows.append({**base, "price": get_premium_price(html)})
+        regular_rows.append({**base, "price": get_regular_price(html) if html else None})
+        premium_rows.append({**base, "price": get_premium_price(html) if html else None})
     return regular_rows, premium_rows
 
 
-def _do_upload(client, regular_rows, premium_rows):
+def do_upload(client, regular_rows, premium_rows):
     client.table("costco_reg_gas_by_loc").insert(regular_rows).execute()
     client.table("costco_prm_gas_by_loc").insert(premium_rows).execute()
 
@@ -67,6 +59,7 @@ def _do_upload(client, regular_rows, premium_rows):
         "date": datetime.now(ZoneInfo("America/New_York")).date().isoformat(),
         "avg_reg_price": sum(reg_prices) / len(reg_prices) if reg_prices else None,
         "avg_prm_price": sum(prm_prices) / len(prm_prices) if prm_prices else None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }).execute()
 
 
@@ -79,7 +72,7 @@ def upload(regular_rows, premium_rows, timeout=120, retry_delay=5):
     while time.monotonic() < deadline:
         attempt += 1
         try:
-            _do_upload(client, regular_rows, premium_rows)
+            do_upload(client, regular_rows, premium_rows)
             return None
         except Exception as e:
             last_error = e
